@@ -1,0 +1,163 @@
+// Prisma 스키마 정의
+// 사업관리 Discord 봇용 데이터베이스 스키마
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// 사업 (Project) - 프로젝트 관리
+// ============================================
+model Project {
+  id          String   @id @default(cuid())
+  name        String   // 사업명
+  description String?  // 사업 설명
+  pmDiscordId String   // 담당 PM Discord ID
+  startDate   DateTime // 시작일
+  endDate     DateTime // 종료일
+  status      String   @default("PLANNING") // PLANNING | IN_PROGRESS | ISSUE | ON_HOLD | COMPLETED
+  guildId     String   // Discord 서버 ID
+  channelId   String?  // 전용 채널 ID (선택)
+  manHours    Float?   // 투입 공수 (Man/Month 또는 시간)
+  personnel   String?  // 투입 인원 (비정규화 문자열)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 관계
+  participants  ProjectParticipant[]
+  milestones    Milestone[]
+  issues        Issue[]
+  decisions     Decision[]
+  documents     Document[]
+
+  @@index([guildId])
+  @@index([status])
+  @@index([pmDiscordId])
+}
+
+// 사업 참여자 (다대다 관계 테이블)
+model ProjectParticipant {
+  id        String   @id @default(cuid())
+  projectId String
+  discordId String   // Discord 사용자 ID
+  role      String   @default("MEMBER") // PM | MEMBER
+  joinedAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, discordId])
+  @@index([discordId])
+}
+
+// ============================================
+// 일정 (Milestone) - 마일스톤 관리
+// ============================================
+model Milestone {
+  id               String    @id @default(cuid())
+  projectId        String
+  name             String    // 일정명
+  description      String?   // 일정 설명
+  targetDate       DateTime  // 목표일
+  assigneeDiscordId String?  // 담당자 Discord ID
+  status           String    @default("SCHEDULED") // SCHEDULED | COMPLETED | DELAYED
+  completedAt      DateTime? // 완료일
+
+  // 알림 플래그
+  notifiedD7       Boolean   @default(false) // D-7 알림 발송 여부
+  notifiedD1       Boolean   @default(false) // D-1 알림 발송 여부
+  notifiedDelayed  Boolean   @default(false) // 지연 알림 발송 여부
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([status])
+  @@index([targetDate])
+}
+
+// ============================================
+// 이슈 (Issue) - 이슈/문제 관리
+// ============================================
+model Issue {
+  id                String    @id @default(cuid())
+  projectId         String
+  title             String    // 이슈 제목
+  content           String    // 이슈 내용
+  assigneeDiscordId String?   // 담당자 Discord ID
+  impact            String    @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  status            String    @default("OPEN") // OPEN | IN_ACTION | RESOLVED | CLOSED
+  resolution        String?   // 해결 내용 (종료시 기록)
+  lastWarningAt     DateTime? // 마지막 미조치 경고 시간
+  resolvedAt        DateTime? // 해결일
+  closedAt          DateTime? // 종료일
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([status])
+  @@index([impact])
+}
+
+// ============================================
+// 의사결정 (Decision) - 결정 사항 기록
+// ============================================
+model Decision {
+  id              String   @id @default(cuid())
+  projectId       String
+  content         String   // 결정 내용
+  reason          String?  // 결정 사유
+  deciderDiscordId String  // 결정자 Discord ID
+  relatedLinks    String?  // 관련 링크들 (JSON 배열로 저장)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ============================================
+// 문서 (Document) - 문서 링크 관리
+// ============================================
+model Document {
+  id                 String @id @default(cuid())
+  projectId          String
+  name               String // 문서명
+  type               String // 문서 유형 (기획서, 설계서, 회의록 등)
+  url                String // 문서 URL
+  registrantDiscordId String // 등록자 Discord ID
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([type])
+}
+
+// ============================================
+// 서버 설정 (GuildSettings) - Discord 서버별 설정
+// ============================================
+model GuildSettings {
+  id                    String  @id @default(cuid())
+  guildId               String  @unique // Discord 서버 ID
+  notificationChannelId String? // 알림 채널 ID
+  adminRoleId           String? // 관리자 역할 ID
+  pmRoleId              String? // PM 역할 ID
+  timezone              String  @default("Asia/Seoul") // 시간대
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
